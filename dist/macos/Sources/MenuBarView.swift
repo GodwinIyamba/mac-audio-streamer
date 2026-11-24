@@ -261,14 +261,17 @@ struct MenuBarView: View {
 
             // Live Audio Level Meter
             VStack(alignment: .leading, spacing: 4) {
-                HStack {
-                    Text("Live Audio Level")
+                HStack(spacing: 6) {
+                    Text(controller.currentSource?.compactSummary ?? "Live Audio Level")
                         .font(.system(size: 10.5, weight: .medium))
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                        .foregroundStyle(controller.currentSource != nil ? .primary : .secondary)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                    Spacer(minLength: 4)
                     Text(meterStatusText)
                         .font(.system(size: 10.5))
                         .foregroundStyle(controller.isStreaming && controller.audioLevel > 0.01 ? .green : .secondary)
+                        .fixedSize()
                 }
 
                 GeometryReader { geo in

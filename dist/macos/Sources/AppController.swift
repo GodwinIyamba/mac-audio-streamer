@@ -16,12 +16,14 @@ final class AppController: ObservableObject {
     @Published var selectedIP: String = ""
     @Published var formatConfig: AudioFormatConfig = AudioFormatConfig()
     @Published var audioLevel: Double = 0.0
+    @Published var currentSource: AudioSourceInfo?
     @Published var warningMessage: String?
     @Published var errorMessage: String?
     @Published var copiedURL: Bool = false
     @Published var launchAtLogin: Bool = false
 
     private let tapEngine = AudioTapEngine()
+    private let sourceTracker = AudioSourceTracker()
     private let server: LANAudioServer
     private var lastLevelUpdateTime: CFTimeInterval = 0
     private var levelDecayTimer: Timer?
@@ -165,16 +167,28 @@ final class AppController: ObservableObject {
 
         server.onNeedStartCapture = { [weak self] muted in
             self?.tapEngine.start(muteMac: muted)
+            self?.sourceTracker.start()
         }
 
         server.onNeedStopCapture = { [weak self] in
             self?.tapEngine.stop()
+            self?.sourceTracker.stop()
+            self?.server.updateSource(nil)
             DispatchQueue.main.async { [weak self] in
                 guard let self else { return }
                 self.isStreaming = false
                 self.audioLevel = 0
+                self.currentSource = nil
                 self.warningMessage = nil
                 self.onStatusAppearanceChanged?()
+            }
+        }
+
+        sourceTracker.onSourceChanged = { [weak self] source in
+            guard let self else { return }
+            self.server.updateSource(source)
+            DispatchQueue.main.async { [weak self] in
+                self?.currentSource = source
             }
         }
 
@@ -200,10 +214,12 @@ final class AppController: ObservableObject {
     func stopServer() {
         server.stop()
         tapEngine.stop()
+        sourceTracker.stop()
         isServerRunning = false
         isStreaming = false
         listenerCount = 0
         audioLevel = 0
+        currentSource = nil
         warningMessage = nil
         onStatusAppearanceChanged?()
     }
@@ -280,6 +296,7 @@ final class AppController: ObservableObject {
     func shutdownSynchronously() {
         levelDecayTimer?.invalidate()
         levelDecayTimer = nil
+        sourceTracker.stop()
         server.stopSynchronously()
         tapEngine.stopSynchronously()
     }

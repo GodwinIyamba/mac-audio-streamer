@@ -30,6 +30,8 @@
     <true/>
     <key>NSAudioCaptureUsageDescription</key>
     <string>Mac Audio Speaker captures macOS system audio so it can stream low-latency sound to your iPhone over local Wi-Fi.</string>
+    <key>NSAppleEventsUsageDescription</key>
+    <string>Mac Audio Speaker reads the currently playing track or browser tab title to display it on your iPhone screen.</string>
     <key>NSLocalNetworkUsageDescription</key>
     <string>Mac Audio Speaker runs a local Wi-Fi server so your iPhone Safari browser can connect and play audio.</string>
     <key>NSHighResolutionCapable</key>

@@ -26,6 +26,7 @@ swiftc -O \
   -framework ServiceManagement \
   -framework Foundation \
   "$ROOT_DIR/macos/Sources/NetworkInfo.swift" \
+  "$ROOT_DIR/macos/Sources/AudioSourceTracker.swift" \
   "$ROOT_DIR/macos/Sources/AudioTapEngine.swift" \
   "$ROOT_DIR/macos/Sources/LANAudioServer.swift" \
   "$ROOT_DIR/macos/Sources/AppController.swift" \

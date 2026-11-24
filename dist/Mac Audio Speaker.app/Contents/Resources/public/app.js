@@ -15,6 +15,8 @@
   const statBuffer = document.getElementById('stat-buffer');
   const statPing = document.getElementById('stat-ping');
   const statFormat = document.getElementById('stat-format');
+  const oledSourceApp = document.getElementById('oled-source-app');
+  const oledSourceTitle = document.getElementById('oled-source-title');
   const oledRouteState = document.getElementById('oled-route-state');
   const volumeSlider = document.getElementById('volume-slider');
   const volumeOutput = document.getElementById('volume-output');
@@ -72,8 +74,38 @@
         channels = info.channels;
         updateFormatLabel();
       }
+      if (info.source) {
+        renderSource(info.source);
+      }
     })
     .catch(() => {});
+
+  function renderSource(source) {
+    if (!source || !source.app) {
+      oledSourceApp.textContent = 'SRC';
+      oledSourceApp.dataset.active = 'false';
+      oledSourceTitle.textContent = isListening ? 'System audio' : 'No active audio';
+      oledSourceTitle.classList.add('is-idle');
+      return;
+    }
+
+    const appsList = Array.isArray(source.apps) && source.apps.length > 1
+      ? source.apps.join(' + ')
+      : source.app;
+
+    oledSourceApp.textContent = source.app;
+    oledSourceApp.dataset.active = 'true';
+
+    if (source.title) {
+      oledSourceTitle.textContent = source.artist
+        ? `${source.title} · ${source.artist}`
+        : source.title;
+      oledSourceTitle.classList.remove('is-idle');
+    } else {
+      oledSourceTitle.textContent = appsList !== source.app ? appsList : 'Playing audio';
+      oledSourceTitle.classList.add('is-idle');
+    }
+  }
 
   function updateFormatLabel() {
     const khz = (sampleRate / 1000).toFixed(sampleRate % 1000 ? 1 : 0);
@@ -111,11 +143,7 @@
   function syncMuteUI() {
     const muted = muteMacToggle.checked;
     muteSub.textContent = muted ? 'Speakers off' : 'Speakers on';
-    if (isListening) {
-      oledRouteState.textContent = muted ? 'MAC SPEAKERS MUTED' : 'MAC + IPHONE ACTIVE';
-    } else {
-      oledRouteState.textContent = muted ? 'MAC MUTED ON CONNECT' : 'DUAL OUTPUT ON CONNECT';
-    }
+    oledRouteState.textContent = muted ? 'MAC MUTED' : 'DUAL OUT';
   }
 
   syncVolumeUI();
@@ -510,6 +538,9 @@
             muteMacToggle.checked = msg.mutedMac;
             syncMuteUI();
           }
+          if ('source' in msg) {
+            renderSource(msg.source);
+          }
           updateFormatLabel();
           if (msg.error) {
             showError(msg.error);
@@ -518,6 +549,8 @@
             showError(msg.warning);
             setStatus('error', 'Check Mac');
           }
+        } else if (msg.type === 'source') {
+          renderSource(msg.source);
         } else if (msg.type === 'warning') {
           if (msg.message) {
             showError(msg.message);
@@ -590,6 +623,7 @@
 
     setStatus('idle', 'Standby');
     showError('');
+    renderSource(null);
     statBuffer.textContent = '-- ms';
     statPing.textContent = '-- ms';
     drawMeter();

@@ -211,6 +211,7 @@ final class LANAudioServer {
     private var capturing: Bool = false
     private var lastError: String?
     private var lastWarning: String?
+    private var currentSource: AudioSourceInfo?
 
     var onListenerCountChanged: ((Int) -> Void)?
     var onNeedStartCapture: ((Bool) -> Void)?
@@ -324,6 +325,15 @@ final class LANAudioServer {
             self.lastError = message
             self.capturing = false
             self.broadcastJSONLocked(["type": "error", "message": message])
+        }
+    }
+
+    func updateSource(_ source: AudioSourceInfo?) {
+        queue.async { [weak self] in
+            guard let self else { return }
+            self.currentSource = source
+            let value: Any = source?.dictionary ?? NSNull()
+            self.broadcastJSONLocked(["type": "source", "source": value])
         }
     }
 
@@ -581,7 +591,8 @@ final class LANAudioServer {
             "mutedMac": muteMac,
             "capturing": capturing,
             "error": lastError ?? NSNull(),
-            "warning": lastWarning ?? NSNull()
+            "warning": lastWarning ?? NSNull(),
+            "source": currentSource?.dictionary ?? NSNull()
         ]
         return payload
     }
