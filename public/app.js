@@ -1,12 +1,13 @@
 'use strict';
 
 (() => {
-  const appShell = document.querySelector('.app-shell');
+  const chassis = document.querySelector('.chassis');
   const macNameEl = document.getElementById('mac-name');
   const stageTrigger = document.getElementById('stage-trigger');
   const playBtn = document.getElementById('play-btn');
   const playIcon = document.getElementById('play-icon');
   const playLabel = document.getElementById('play-label');
+  const playSub = document.getElementById('play-sub');
   const statusBadge = document.getElementById('status-badge');
   const statusText = document.getElementById('status-text');
   const errorBanner = document.getElementById('error-banner');
@@ -14,24 +15,25 @@
   const statBuffer = document.getElementById('stat-buffer');
   const statPing = document.getElementById('stat-ping');
   const statFormat = document.getElementById('stat-format');
+  const oledRouteState = document.getElementById('oled-route-state');
   const volumeSlider = document.getElementById('volume-slider');
-  const volumeScrubberWrap = document.getElementById('volume-scrubber-wrap');
   const volumeOutput = document.getElementById('volume-output');
   const bufferSlider = document.getElementById('buffer-slider');
   const bufferOutput = document.getElementById('buffer-output');
-  const segmentBtns = Array.from(document.querySelectorAll('.segment-btn'));
-  const segmentedThumb = document.getElementById('segmented-thumb');
+  const presetBtns = Array.from(document.querySelectorAll('.preset-key'));
   const muteMacToggle = document.getElementById('mute-mac-toggle');
+  const muteSub = document.getElementById('mute-sub');
   const meterCanvas = document.getElementById('meter-canvas');
   const meterCtx = meterCanvas.getContext('2d');
 
   const PLAY_SVG =
-    '<svg viewBox="0 0 20 20"><path d="M5.5 3.6c0-.85.94-1.36 1.66-.9l9.6 6.1c.66.42.66 1.38 0 1.8l-9.6 6.1c-.72.46-1.66-.05-1.66-.9V3.6z" fill="currentColor"/></svg>';
+    '<svg viewBox="0 0 18 18"><path d="M5 3.3l9.8 5.7L5 14.7V3.3z" fill="currentColor"/></svg>';
   const STOP_SVG =
-    '<svg viewBox="0 0 20 20"><rect x="4.5" y="4.5" width="11" height="11" rx="2.4" fill="currentColor"/></svg>';
+    '<svg viewBox="0 0 18 18"><rect x="4" y="4" width="10" height="10" rx="1.5" fill="currentColor"/></svg>';
 
   const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  const PRESET_VALUES = [40, 60, 110];
+  const BAR_COUNT = 36;
+  const peakHold = new Float32Array(BAR_COUNT);
 
   let ws = null;
   let audioCtx = null;
@@ -51,7 +53,6 @@
   let nextPlayTime = 0;
   let activeSources = new Set();
   let lastSeq = null;
-  let smoothEnergy = 0;
 
   // MARK: - Hydrate Mac Hostname & Initial State
 
@@ -64,6 +65,7 @@
       }
       if (typeof info.mutedMac === 'boolean') {
         muteMacToggle.checked = info.mutedMac;
+        syncMuteUI();
       }
       if (info.sampleRate && info.channels) {
         sampleRate = info.sampleRate;
@@ -75,11 +77,10 @@
 
   function updateFormatLabel() {
     const khz = (sampleRate / 1000).toFixed(sampleRate % 1000 ? 1 : 0);
-    const chLabel = channels === 2 ? 'Stereo' : channels === 1 ? 'Mono' : `${channels}ch`;
-    statFormat.textContent = `${khz} kHz ${chLabel}`;
+    statFormat.textContent = `${khz} kHz · ${channels}CH`;
   }
 
-  // MARK: - Slider & Segmented Control Sync
+  // MARK: - Tactile Controls Sync
 
   function syncRangeProgress(slider) {
     const min = Number(slider.min) || 0;
@@ -102,20 +103,24 @@
     bufferOutput.textContent = `${ms} ms`;
     bufferSlider.setAttribute('aria-valuetext', `${ms} milliseconds`);
 
-    const presetIndex = PRESET_VALUES.indexOf(ms);
-    if (presetIndex >= 0) {
-      segmentedThumb.style.opacity = '1';
-      segmentedThumb.style.transform = `translateX(${presetIndex * 100}%)`;
-    } else {
-      segmentedThumb.style.opacity = '0';
-    }
-    segmentBtns.forEach((btn, idx) => {
-      btn.setAttribute('aria-checked', idx === presetIndex ? 'true' : 'false');
+    presetBtns.forEach((btn) => {
+      btn.setAttribute('aria-checked', Number(btn.dataset.ms) === ms ? 'true' : 'false');
     });
+  }
+
+  function syncMuteUI() {
+    const muted = muteMacToggle.checked;
+    muteSub.textContent = muted ? 'Speakers off' : 'Speakers on';
+    if (isListening) {
+      oledRouteState.textContent = muted ? 'MAC SPEAKERS MUTED' : 'MAC + IPHONE ACTIVE';
+    } else {
+      oledRouteState.textContent = muted ? 'MAC MUTED ON CONNECT' : 'DUAL OUTPUT ON CONNECT';
+    }
   }
 
   syncVolumeUI();
   syncBufferUI();
+  syncMuteUI();
 
   volumeSlider.addEventListener('input', () => {
     syncVolumeUI();
@@ -124,16 +129,9 @@
     }
   });
 
-  volumeSlider.addEventListener('pointerdown', () => {
-    volumeScrubberWrap.classList.add('scrubbing');
-  });
-  const endScrub = () => volumeScrubberWrap.classList.remove('scrubbing');
-  volumeSlider.addEventListener('pointerup', endScrub);
-  volumeSlider.addEventListener('pointercancel', endScrub);
-
   bufferSlider.addEventListener('input', syncBufferUI);
 
-  segmentBtns.forEach((btn) => {
+  presetBtns.forEach((btn) => {
     btn.addEventListener('click', () => {
       bufferSlider.value = btn.dataset.ms;
       syncBufferUI();
@@ -141,6 +139,7 @@
   });
 
   muteMacToggle.addEventListener('change', () => {
+    syncMuteUI();
     if (ws && ws.readyState === WebSocket.OPEN) {
       ws.send(JSON.stringify({ type: 'setMuteMac', muted: muteMacToggle.checked }));
     }
@@ -150,7 +149,7 @@
 
   function setStatus(state, text) {
     statusBadge.dataset.state = state;
-    appShell.dataset.state = state;
+    chassis.dataset.state = state;
     document.body.dataset.state = state;
     statusText.textContent = text;
   }
@@ -168,8 +167,10 @@
   function updateButtonUI() {
     playBtn.dataset.active = isListening ? 'true' : 'false';
     playIcon.innerHTML = isListening ? STOP_SVG : PLAY_SVG;
-    playLabel.textContent = isListening ? 'Stop Listening' : 'Start Listening';
+    playLabel.textContent = isListening ? 'Stop' : 'Listen';
+    playSub.textContent = isListening ? 'Streaming live' : 'Connect to Mac';
     stageTrigger.setAttribute('aria-label', isListening ? 'Stop listening' : 'Start listening');
+    syncMuteUI();
   }
 
   // MARK: - iOS Safari Silent-Switch Audio Session Unlocker
@@ -263,7 +264,7 @@
 
       analyserNode = audioCtx.createAnalyser();
       analyserNode.fftSize = 256;
-      analyserNode.smoothingTimeConstant = 0.78;
+      analyserNode.smoothingTimeConstant = 0.72;
 
       gainNode.connect(analyserNode);
       analyserNode.connect(audioCtx.destination);
@@ -304,7 +305,7 @@
   function handlePcmPacket(arrayBuffer) {
     if (!isListening || !audioCtx) return;
     if (audioCtx.state !== 'running') {
-      statBuffer.textContent = 'Paused';
+      statBuffer.textContent = 'PAUSED';
       audioCtx.resume().catch(() => {});
       if (errorBanner.hidden) {
         showError('iPhone audio paused — tap anywhere to resume.');
@@ -383,88 +384,83 @@
     statBuffer.textContent = `${Math.max(0, Math.round((nextPlayTime - audioCtx.currentTime) * 1000))} ms`;
   }
 
-  // MARK: - Radial Acoustic Stage Visualizer
+  // MARK: - Crisp Monochrome OLED Spectrum + Peak Hold
 
   function drawMeter() {
     const w = meterCanvas.width;
     const h = meterCanvas.height;
-    const cx = w / 2;
-    const cy = h / 2;
     meterCtx.clearRect(0, 0, w, h);
 
-    const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-    const accentRGB = isDark ? '10, 132, 255' : '0, 122, 255';
-    const liveRGB = isDark ? '48, 209, 88' : '52, 199, 89';
+    // Subtle precision OLED grid hairlines
+    meterCtx.strokeStyle = 'rgba(243, 243, 239, 0.08)';
+    meterCtx.lineWidth = 1;
+    for (let row = 1; row <= 3; row++) {
+      const y = Math.round((h / 4) * row) + 0.5;
+      meterCtx.beginPath();
+      meterCtx.moveTo(0, y);
+      meterCtx.lineTo(w, y);
+      meterCtx.stroke();
+    }
 
     let bins = null;
-    let avgEnergy = 0;
     if (isListening && analyserNode) {
       bins = new Uint8Array(analyserNode.frequencyBinCount);
       analyserNode.getByteFrequencyData(bins);
-      let sum = 0;
-      const sampleEnd = Math.min(bins.length, 48);
-      for (let i = 0; i < sampleEnd; i++) sum += bins[i];
-      avgEnergy = sum / (sampleEnd * 255);
     }
 
-    smoothEnergy += (avgEnergy - smoothEnergy) * 0.18;
-    if (!prefersReducedMotion) {
-      document.documentElement.style.setProperty('--audio-energy', smoothEnergy.toFixed(3));
-    }
+    const padX = 4;
+    const gap = 6;
+    const barW = Math.floor((w - padX * 2 - gap * (BAR_COUNT - 1)) / BAR_COUNT);
+    const totalW = barW * BAR_COUNT + gap * (BAR_COUNT - 1);
+    const startX = Math.floor((w - totalW) / 2);
+    const baselineY = h - 10;
+    const maxBarH = h - 28;
+    const segH = 8;
+    const segGap = 4;
 
-    // Concentric acoustic halos
-    const baseRadius = w * 0.24;
-    for (let rIdx = 0; rIdx < 3; rIdx++) {
-      const expand = prefersReducedMotion ? 0 : smoothEnergy * (22 + rIdx * 16);
-      const radius = baseRadius + 30 + rIdx * 36 + expand;
-      const alpha = isListening
-        ? Math.max(0.04, (0.22 - rIdx * 0.055) + smoothEnergy * 0.22)
-        : 0.09 - rIdx * 0.024;
-      meterCtx.beginPath();
-      meterCtx.arc(cx, cy, radius, 0, Math.PI * 2);
-      meterCtx.strokeStyle = `rgba(${isListening && smoothEnergy > 0.05 ? liveRGB : accentRGB}, ${alpha.toFixed(3)})`;
-      meterCtx.lineWidth = rIdx === 0 ? 2.2 : 1.5;
-      meterCtx.stroke();
-    }
-
-    // 48-spoke radial audio ticks around medallion
-    const spokeCount = 48;
-    const innerR = baseRadius + 14;
-    const maxLen = w * 0.16;
-
-    meterCtx.lineCap = 'round';
-    for (let i = 0; i < spokeCount; i++) {
-      const angle = (i / spokeCount) * Math.PI * 2 - Math.PI / 2;
-      let mag = 0.06;
+    for (let i = 0; i < BAR_COUNT; i++) {
+      let level = 0;
       if (bins) {
-        // Mirror spectrum cleanly left/right for balanced symmetry
-        const mirrorIdx = i < spokeCount / 2 ? i : spokeCount - 1 - i;
-        const binIdx = Math.min(bins.length - 1, Math.floor((mirrorIdx / (spokeCount / 2)) * (bins.length * 0.55)));
-        mag = Math.max(0.06, Math.pow(bins[binIdx] / 255, 1.15));
+        const idx = Math.min(bins.length - 1, Math.floor((i / BAR_COUNT) * (bins.length * 0.62)));
+        level = bins[idx] / 255;
       }
-      const len = prefersReducedMotion ? 10 : 8 + mag * maxLen;
-      const x1 = cx + Math.cos(angle) * innerR;
-      const y1 = cy + Math.sin(angle) * innerR;
-      const x2 = cx + Math.cos(angle) * (innerR + len);
-      const y2 = cy + Math.sin(angle) * (innerR + len);
 
-      const active = isListening && mag > 0.1;
-      const opacity = active ? Math.min(0.95, 0.35 + mag * 0.65) : (isDark ? 0.14 : 0.12);
-      meterCtx.strokeStyle = active
-        ? `rgba(${accentRGB}, ${opacity.toFixed(3)})`
-        : `rgba(${isDark ? '255, 255, 255' : '0, 0, 0'}, ${opacity.toFixed(3)})`;
-      meterCtx.lineWidth = 4.2;
-      meterCtx.beginPath();
-      meterCtx.moveTo(x1, y1);
-      meterCtx.lineTo(x2, y2);
-      meterCtx.stroke();
+      if (level > peakHold[i]) {
+        peakHold[i] = level;
+      } else {
+        peakHold[i] = Math.max(0, peakHold[i] - 0.014);
+      }
+
+      const x = startX + i * (barW + gap);
+
+      // Floor baseline dot
+      meterCtx.fillStyle = isListening ? 'rgba(243, 243, 239, 0.22)' : 'rgba(243, 243, 239, 0.14)';
+      meterCtx.fillRect(x, baselineY, barW, 3);
+
+      if (!isListening || prefersReducedMotion) continue;
+
+      // Crisp segmented OLED meter bars
+      const activeH = Math.round(level * maxBarH);
+      const segments = Math.floor(activeH / (segH + segGap));
+      meterCtx.fillStyle = '#f3f3ef';
+      for (let s = 0; s < segments; s++) {
+        const sy = baselineY - (s + 1) * (segH + segGap);
+        meterCtx.fillRect(x, sy, barW, segH);
+      }
+
+      // Single crisp Braun Signal-Orange peak-hold cap (zero glow)
+      if (peakHold[i] > 0.06) {
+        const peakY = Math.max(8, baselineY - Math.round(peakHold[i] * maxBarH) - segH);
+        meterCtx.fillStyle = '#ff4f17';
+        meterCtx.fillRect(x, peakY, barW, 4);
+      }
     }
 
     if (isListening) {
       rafId = requestAnimationFrame(drawMeter);
     } else {
+      peakHold.fill(0);
       rafId = null;
-      document.documentElement.style.setProperty('--audio-energy', '0');
     }
   }
 
@@ -477,7 +473,7 @@
     clearTimeout(reconnectTimer);
 
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    setStatus('connecting', 'Connecting…');
+    setStatus('connecting', 'Syncing');
     showError('');
 
     const socket = new WebSocket(`${proto}//${location.host}/ws`);
@@ -510,31 +506,35 @@
         if (msg.type === 'config') {
           if (msg.sampleRate) sampleRate = msg.sampleRate;
           if (msg.channels) channels = msg.channels;
-          if (typeof msg.mutedMac === 'boolean') muteMacToggle.checked = msg.mutedMac;
+          if (typeof msg.mutedMac === 'boolean') {
+            muteMacToggle.checked = msg.mutedMac;
+            syncMuteUI();
+          }
           updateFormatLabel();
           if (msg.error) {
             showError(msg.error);
-            setStatus('error', 'Permission Needed');
+            setStatus('error', 'Error');
           } else if (msg.warning) {
             showError(msg.warning);
-            setStatus('error', 'Permission Needed');
+            setStatus('error', 'Check Mac');
           }
         } else if (msg.type === 'warning') {
           if (msg.message) {
             showError(msg.message);
-            setStatus('error', 'Permission Needed');
+            setStatus('error', 'Check Mac');
           } else {
             showError('');
             if (isListening) setStatus('live', 'Live');
           }
         } else if (msg.type === 'muteState') {
           muteMacToggle.checked = Boolean(msg.mutedMac);
+          syncMuteUI();
         } else if (msg.type === 'pong') {
           const rtt = Math.max(1, Math.round(performance.now() - msg.t));
           statPing.textContent = `${rtt} ms`;
         } else if (msg.type === 'error') {
           showError(msg.message || 'Mac audio capture error.');
-          setStatus('error', 'Capture Error');
+          setStatus('error', 'Error');
         }
       } catch {}
     });
@@ -548,10 +548,10 @@
       statPing.textContent = '-- ms';
 
       if (isListening) {
-        setStatus('connecting', 'Reconnecting…');
+        setStatus('connecting', 'Syncing');
         reconnectTimer = setTimeout(connectWebSocket, 1200);
       } else {
-        setStatus('idle', 'Ready');
+        setStatus('idle', 'Standby');
       }
     });
 
@@ -588,11 +588,10 @@
       s.close(1000);
     }
 
-    setStatus('idle', 'Ready');
+    setStatus('idle', 'Standby');
     showError('');
     statBuffer.textContent = '-- ms';
     statPing.textContent = '-- ms';
-    smoothEnergy = 0;
     drawMeter();
   }
 
