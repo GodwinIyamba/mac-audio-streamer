@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDevelopmentRegion</key>
+    <string>en</string>
+    <key>CFBundleDisplayName</key>
+    <string>Mac Audio Speaker</string>
+    <key>CFBundleExecutable</key>
+    <string>MacAudioSpeaker</string>
+    <key>CFBundleIconFile</key>
+    <string>AppIcon</string>
+    <key>CFBundleIdentifier</key>
+    <string>com.audiostreamer.MacAudioSpeaker</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
+    <key>CFBundleName</key>
+    <string>Mac Audio Speaker</string>
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    <key>CFBundleShortVersionString</key>
+    <string>1.0.0</string>
+    <key>CFBundleVersion</key>
+    <string>1</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.utilities</string>
+    <key>LSMinimumSystemVersion</key>
+    <string>14.2</string>
+    <key>LSUIElement</key>
+    <true/>
+    <key>NSAudioCaptureUsageDescription</key>
+    <string>Mac Audio Speaker captures macOS system audio so it can stream low-latency sound to your iPhone over local Wi-Fi.</string>
+    <key>NSLocalNetworkUsageDescription</key>
+    <string>Mac Audio Speaker runs a local Wi-Fi server so your iPhone Safari browser can connect and play audio.</string>
+    <key>NSHighResolutionCapable</key>
+    <true/>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
+</dict>
+</plist>

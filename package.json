@@ -1,0 +1,12 @@
+{
+  "name": "mac-iphone-audio-streamer",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Low-latency macOS system audio to iPhone Safari streamer over LAN",
+  "scripts": {
+    "build:capture": "swiftc -O -framework CoreAudio -framework Foundation capture/audio_tap.swift -o capture/audio_tap",
+    "build:app": "bash macos/build-app.sh",
+    "app": "open 'dist/Mac Audio Speaker.app'",
+    "start": "node server.js"
+  }
+}
